@@ -93,13 +93,12 @@ void QuadEstimatorEKF::UpdateFromIMU(V3F accel, V3F gyro)
   // (replace the code below)
   // make sure you comment it out when you add your own code -- otherwise e.g. you might integrate yaw twice
 
-  float predictedPitch = pitchEst + dtIMU * gyro.y;
-  float predictedRoll = rollEst + dtIMU * gyro.x;
-  ekfState(6) = ekfState(6) + dtIMU * gyro.z;	// yaw
-
-  // normalize yaw to -pi .. pi
-  if (ekfState(6) > F_PI) ekfState(6) -= 2.f*F_PI;
-  if (ekfState(6) < -F_PI) ekfState(6) += 2.f*F_PI;
+  Quaternion<float> qt = Quaternion<float>::FromEuler123_RPY( rollEst, pitchEst, ekfState(6) );
+  Quaternion<float> qtBar = qt.IntegrateBodyRate( gyro, dtIMU ); 
+  V3D predicted = qtBar.ToEulerRPY();
+  float predictedRoll = predicted[0];
+  float predictedPitch = predicted[1];
+  ekfState(6) = predicted[2];
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -161,7 +160,18 @@ VectorXf QuadEstimatorEKF::PredictState(VectorXf curState, float dt, V3F accel, 
   Quaternion<float> attitude = Quaternion<float>::FromEuler123_RPY(rollEst, pitchEst, curState(6));
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  // Integrate positions 
+  predictedState(0) = curState(0) + curState(3) * dt;
+  predictedState(1) = curState(1) + curState(4) * dt;
+  predictedState(2) = curState(2) + curState(5) * dt;
 
+  // transform acceleration to inertial frame
+  V3F inertialAccel = attitude.Rotate_BtoI( accel ); 
+
+  //Integrate velocities
+  predictedState(3) = curState(3) + inertialAccel[0] * dt; // calculate xVel
+  predictedState(4) = curState(4) + inertialAccel[1] * dt; // calculate yVel
+  predictedState(5) = curState(5) + inertialAccel[2] * dt - CONST_GRAVITY * dt; // calculate zVel
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -188,7 +198,12 @@ MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
   //   that your calculations are reasonable
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
-
+  RbgPrime(0, 0) = -cos(pitch) * sin(yaw); 
+  RbgPrime(0, 1) = -sin(roll) * sin(pitch) * sin(yaw) - cos(roll) * cos(yaw);
+  RbgPrime(0, 2) = -cos(roll) * sin(pitch) * sin(yaw) + sin(roll) * sin(yaw);
+  RbgPrime(1, 0) = cos(pitch) * cos(yaw);
+  RbgPrime(0, 1) = sin(roll) * sin(pitch) * cos(yaw) - cos(roll) * sin(yaw);
+  RbgPrime(0, 2) = cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw);
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -234,11 +249,21 @@ void QuadEstimatorEKF::Predict(float dt, V3F accel, V3F gyro)
   gPrime.setIdentity();
 
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  // Set gPrime dt's
+  gPrime(0, 3) = dt;
+  gPrime(1, 4) = dt;
+  gPrime(2, 5) = dt;
 
+  // Calculate messy values
+  gPrime(3, 6) = V3F( RbgPrime(0, 0), RbgPrime(0, 1), RbgPrime(0, 2) ).dot(accel) * dt;
+  gPrime(4, 6) = V3F( RbgPrime(1, 0), RbgPrime(1, 1), RbgPrime(1, 2) ).dot(accel) * dt;
+  gPrime(5, 6) = V3F( RbgPrime(2, 0), RbgPrime(2, 1), RbgPrime(2, 2) ).dot(accel) * dt;
 
+  MatrixXf sigmaBar = (gPrime * ekfCov) * gPrime.transpose() + Q;
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
   ekfState = newState;
+  ekfCov = sigmaBar;
 }
 
 void QuadEstimatorEKF::UpdateFromGPS(V3F pos, V3F vel)
@@ -259,6 +284,12 @@ void QuadEstimatorEKF::UpdateFromGPS(V3F pos, V3F vel)
   //  - The GPS measurement covariance is available in member variable R_GPS
   //  - this is a very simple update
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  for (int i = 0; i < 6; i++)
+  {
+    hPrime(i, i) = 1;
+    zFromX(i) = ekfState(i);
+  }
+  
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
@@ -280,7 +311,17 @@ void QuadEstimatorEKF::UpdateFromMag(float magYaw)
   //    (you don't want to update your yaw the long way around the circle)
   //  - The magnetomer measurement covariance is available in member variable R_Mag
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
+  hPrime(0, 6) = 1;
+  zFromX(0) = ekfState(6);
 
+
+  // Normalize difference
+  float dz = z(0) - zFromX(0);
+
+  if (dz > F_PI) 
+    zFromX(0) += 2.f * F_PI;
+  else if (dz < -F_PI) 
+    zFromX(0) -= 2.f * F_PI;
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
