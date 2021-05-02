@@ -200,10 +200,10 @@ MatrixXf QuadEstimatorEKF::GetRbgPrime(float roll, float pitch, float yaw)
   ////////////////////////////// BEGIN STUDENT CODE ///////////////////////////
   RbgPrime(0, 0) = -cos(pitch) * sin(yaw); 
   RbgPrime(0, 1) = -sin(roll) * sin(pitch) * sin(yaw) - cos(roll) * cos(yaw);
-  RbgPrime(0, 2) = -cos(roll) * sin(pitch) * sin(yaw) + sin(roll) * sin(yaw);
+  RbgPrime(0, 2) = -cos(roll) * sin(pitch) * sin(yaw) + sin(roll) * cos(yaw);
   RbgPrime(1, 0) = cos(pitch) * cos(yaw);
-  RbgPrime(0, 1) = sin(roll) * sin(pitch) * cos(yaw) - cos(roll) * sin(yaw);
-  RbgPrime(0, 2) = cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw);
+  RbgPrime(1, 1) = sin(roll) * sin(pitch) * cos(yaw) - cos(roll) * sin(yaw);
+  RbgPrime(1, 2) = cos(roll) * sin(pitch) * cos(yaw) + sin(roll) * sin(yaw);
 
   /////////////////////////////// END STUDENT CODE ////////////////////////////
 
